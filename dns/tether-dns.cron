@@ -1,0 +1,10 @@
+# tether/dns/tether-dns.cron
+# Install on the relay box to keep DNS in sync if the public IP ever changes.
+# Run as root (so it can read /etc/tether/dns-env).
+#
+# Install with:
+#   sudo cp tether-dns.cron /etc/cron.d/tether-dns
+#
+# Requires /etc/tether/dns-env containing the CF_* variables (see examples/config.env.example).
+
+*/5 * * * * root [ -f /etc/tether/dns-env ] && set -a && . /etc/tether/dns-env && set +a && /usr/local/bin/tether-update-dns >> /var/log/tether-dns.log 2>&1

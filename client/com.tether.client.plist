@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  tether/client/com.tether.client.plist — reference launchd plist template.
+  (also written dynamically by client/install-client.sh; this file is for documentation/audit)
+
+  Substitute placeholders before installing manually:
+    {{RELAY_HOST}}    e.g. home.example.com or 1.2.3.4
+    {{REMOTE_PORT}}   port the relay binds (e.g. 2222)
+    {{LOCAL_PORT}}    local sshd port (22)
+
+  Install path: /Library/LaunchDaemons/com.tether.client.plist (mode 0644 root:wheel)
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tether.client</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>exec /usr/local/bin/bore local {{LOCAL_PORT}} --to {{RELAY_HOST}} --port {{REMOTE_PORT}} --secret "$(cat /etc/tether/secret)"</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>UserName</key>
+    <string>root</string>
+    <key>GroupName</key>
+    <string>wheel</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>/var/log/tether-client.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/tether-client.err.log</string>
+</dict>
+</plist>

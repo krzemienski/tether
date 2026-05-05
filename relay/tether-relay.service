@@ -1,0 +1,35 @@
+# tether/relay/tether-relay.service — reference systemd unit
+# (also written by relay/install-relay.sh; this file is for documentation/audit)
+[Unit]
+Description=Tether relay (bore server)
+Documentation=https://github.com/krzemienski/tether
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tether
+Group=tether
+ExecStart=/bin/sh -c '/usr/local/bin/bore server --secret "$(cat /etc/tether/secret)" --min-port 2222 --max-port 2222'
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+LockPersonality=true
+ReadOnlyPaths=/etc/tether
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

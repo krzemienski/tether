@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# tether — top-level CLI dispatcher
+#
+# Subcommands:
+#   tether install relay         -- run relay/install-relay.sh
+#   tether install client        -- run client/install-client.sh
+#   tether dns                   -- run dns/update-dns.sh
+#   tether status                -- summarize relay + client + DNS state
+#   tether destroy [relay|client] -- uninstall
+
+set -Eeuo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "${HERE}/.." && pwd)"
+
+usage() {
+  cat <<EOF
+tether — plain SSH from anywhere via your own relay
+
+Usage:
+  tether install relay
+  tether install client
+  tether dns
+  tether status
+  tether destroy [relay|client]
+  tether help
+
+Env vars (see README.md / examples/config.env.example for full list):
+  TETHER_RELAY, TETHER_SECRET, TETHER_REMOTE_PORT, TETHER_LOCAL_PORT
+  CF_API_TOKEN  (or CF_API_EMAIL+CF_API_KEY)
+  CF_ZONE, CF_HOST, CF_TARGET_IP
+
+Source: https://github.com/krzemienski/tether
+EOF
+}
+
+cmd_install() {
+  case "${1:-}" in
+    relay)  exec bash "${ROOT}/relay/install-relay.sh" ;;
+    client) exec bash "${ROOT}/client/install-client.sh" ;;
+    *) echo "tether install requires: relay | client" >&2; exit 2 ;;
+  esac
+}
+
+cmd_dns() {
+  exec bash "${ROOT}/dns/update-dns.sh" "$@"
+}
+
+cmd_status() {
+  echo "=== tether status ==="
+  case "$(uname -s)" in
+    Darwin)
+      if launchctl print system/com.tether.client >/dev/null 2>&1; then
+        echo "client: launchd loaded"
+        launchctl print system/com.tether.client 2>/dev/null | awk '/state|pid|last exit/'
+      else
+        echo "client: NOT loaded"
+      fi
+      pgrep -af 'bore local' || echo "client: no bore process"
+      ;;
+    Linux)
+      if systemctl is-active --quiet tether-client.service 2>/dev/null; then
+        echo "client: tether-client.service active"
+      elif systemctl is-active --quiet tether-relay.service 2>/dev/null; then
+        echo "relay: tether-relay.service active"
+        ss -lntH 2>/dev/null | awk '$4 ~ /:7835$|:2222$/'
+      else
+        echo "no tether systemd service active on this host"
+      fi
+      ;;
+  esac
+}
+
+cmd_destroy() {
+  case "${1:-}" in
+    relay)
+      [ "$(id -u)" -eq 0 ] || { echo "destroy must run as root" >&2; exit 1; }
+      systemctl disable --now tether-relay.service 2>/dev/null || true
+      rm -f /etc/systemd/system/tether-relay.service /usr/local/bin/bore
+      rm -rf /etc/tether
+      systemctl daemon-reload || true
+      userdel tether 2>/dev/null || true
+      echo "relay removed"
+      ;;
+    client)
+      [ "$(id -u)" -eq 0 ] || { echo "destroy must run as root" >&2; exit 1; }
+      case "$(uname -s)" in
+        Darwin)
+          launchctl bootout system/com.tether.client 2>/dev/null || true
+          rm -f /Library/LaunchDaemons/com.tether.client.plist
+          ;;
+        Linux)
+          systemctl disable --now tether-client.service 2>/dev/null || true
+          rm -f /etc/systemd/system/tether-client.service
+          systemctl daemon-reload || true
+          ;;
+      esac
+      rm -f /usr/local/bin/bore
+      rm -rf /etc/tether
+      echo "client removed"
+      ;;
+    *) echo "tether destroy requires: relay | client" >&2; exit 2 ;;
+  esac
+}
+
+main() {
+  case "${1:-help}" in
+    install) shift; cmd_install "$@" ;;
+    dns)     shift; cmd_dns "$@" ;;
+    status)  cmd_status ;;
+    destroy) shift; cmd_destroy "$@" ;;
+    help|-h|--help) usage ;;
+    *) usage; exit 2 ;;
+  esac
+}
+
+main "$@"
