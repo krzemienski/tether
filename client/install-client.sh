@@ -12,7 +12,7 @@
 set -Eeuo pipefail
 umask 077
 
-BORE_VERSION="${BORE_VERSION:-0.5.1}"
+BORE_VERSION="${BORE_VERSION:-0.6.0}"
 INSTALL_PREFIX="/usr/local/bin"
 ETC_DIR="/etc/tether"
 SECRET_FILE="${ETC_DIR}/secret"
