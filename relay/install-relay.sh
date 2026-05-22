@@ -8,7 +8,7 @@
 set -Eeuo pipefail
 umask 077
 
-BORE_VERSION="${BORE_VERSION:-0.5.1}"
+BORE_VERSION="${BORE_VERSION:-0.6.0}"
 INSTALL_PREFIX="/usr/local/bin"
 ETC_DIR="/etc/tether"
 SECRET_FILE="${ETC_DIR}/secret"
@@ -25,6 +25,12 @@ die()  { err "$*"; exit 1; }
 trap 'err "Failed at line $LINENO"' ERR
 
 [ "$(id -u)" -eq 0 ] || die "Must run as root (use sudo)"
+
+case "$(uname -s)" in
+  Linux) ;;
+  *) die "Relay installer targets Linux + systemd (e.g. Ubuntu/Debian VPS). Detected $(uname -s). Run this on the public-IP VPS, not your laptop." ;;
+esac
+command -v systemctl >/dev/null 2>&1 || die "systemd (systemctl) not found; relay requires a systemd host."
 
 require_cmd() { command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"; }
 
