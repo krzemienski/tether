@@ -130,9 +130,9 @@ check_launchd() {
 }
 
 # ---------- check 2: tunnel reachability ----------
-# The tunnel data port (${REMOTE_PORT}) is bound on the relay's loopback only —
-# it is NOT reachable directly over the WAN (router forwards :22, not :2222).
-# So we probe by sshing to the relay and asking it whether the port is bound.
+# Probe by sshing to the relay and asking whether ${REMOTE_PORT} is bound.
+# Tunnel data port is reachable over the WAN only when the home router has a
+# port-forward in place — see check_upnp() below, which re-asserts that lease.
 check_tunnel() {
   if ! relay_ssh true 2>/dev/null; then
     log "tunnel: relay ${RELAY_HOST} unreachable over ssh — network/relay down, NOT kicking client"
@@ -149,6 +149,31 @@ check_tunnel() {
     log "tunnel: recovered after kickstart"
   else
     log "tunnel: STILL DOWN after kickstart"
+  fi
+}
+
+# ---------- check 2b: UPnP port-forward (router) ----------
+# Many residential routers expose port-forwards as UPnP leases that expire on
+# router reboot or after a TTL. Without a static rule the WAN side of the
+# tunnel silently disappears. We re-assert a permanent (lease=0) mapping every
+# tick — UPnP is idempotent, so this is cheap and self-healing.
+# Set TETHER_UPNP=0 in .env to disable (e.g., if the router has a static rule).
+check_upnp() {
+  local relay_lan="${TETHER_RELAY_LAN_IP:-192.168.0.36}"
+  local desc="${TETHER_UPNP_DESC:-tether-ssh}"
+  if [ "${TETHER_UPNP:-1}" != "1" ]; then
+    return 0
+  fi
+  if ! relay_ssh "command -v upnpc >/dev/null" 2>/dev/null; then
+    log "upnp: upnpc missing on relay — skipping (install miniupnpc to enable)"
+    return 0
+  fi
+  local out
+  out="$(relay_ssh "upnpc -e '${desc}' -a ${relay_lan} ${REMOTE_PORT} ${REMOTE_PORT} TCP 0 2>&1 | grep -E 'redirected|failed|error|conflict' | head -1" 2>/dev/null)"
+  if [ -z "$out" ]; then
+    log "upnp: no IGD response (router may not support UPnP or it's disabled)"
+  else
+    log "upnp: ${out}"
   fi
 }
 
@@ -187,6 +212,7 @@ main() {
   log "==== tether-heal tick start ===="
   check_launchd
   check_tunnel
+  check_upnp
   check_dns
   log "==== tether-heal tick end ===="
 }
