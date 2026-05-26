@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.tether.heal — launchd watchdog plist (template).
+
+  Substitute {{TETHER_ROOT}} before installing manually, or use bin/install-heal.sh.
+  Install path: /Library/LaunchDaemons/com.tether.heal.plist (mode 0644 root:wheel)
+
+  Triggers tether-heal.sh every 60 seconds. The heal script self-reports;
+  StartInterval (not KeepAlive) is correct here — we want a periodic probe,
+  not a persistent process.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tether.heal</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>{{TETHER_ROOT}}/bin/tether-heal.sh</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>TETHER_ENV_FILE</key>
+        <string>{{TETHER_ROOT}}/.env</string>
+    </dict>
+
+    <key>UserName</key>
+    <string>root</string>
+    <key>GroupName</key>
+    <string>wheel</string>
+
+    <key>StartInterval</key>
+    <integer>60</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/var/log/tether-heal.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/tether-heal.err.log</string>
+</dict>
+</plist>

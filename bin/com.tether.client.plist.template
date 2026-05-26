@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.tether.client — launchd job for the SSH reverse-tunnel client (template).
+
+  Replaces the prior bore-based client. Architecture:
+
+    m4 (this Mac) opens a persistent SSH connection to the relay
+    (home.hack.ski:22 — only port the home router forwards) and binds the
+    relay's 127.0.0.1:2222 back to localhost:22 on m4.
+
+    External users reach m4 from any IP via:
+        ssh -J nick@home.hack.ski -p 2222 nick@localhost
+
+  Substitutions before installing manually:
+    {{TUNNEL_USER}}   -> the user on the relay that has m4's ssh key (e.g. nick)
+    {{HOME}}          -> /Users/nick (must hold .ssh/id_rsa + .ssh/known_hosts)
+    {{RELAY_HOST}}    -> home.hack.ski
+    {{REMOTE_PORT}}   -> 2222
+    {{LOCAL_PORT}}    -> 22
+
+  Install path: /Library/LaunchDaemons/com.tether.client.plist (0644 root:wheel)
+
+  KeepAlive=true means launchd restarts ssh whenever it exits. Combined with
+  ServerAliveInterval=30 / ServerAliveCountMax=3 / ExitOnForwardFailure=yes,
+  ssh exits within ~90s of a dead tunnel and launchd respawns it.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tether.client</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/ssh</string>
+        <string>-N</string>
+        <string>-R</string><string>127.0.0.1:{{REMOTE_PORT}}:localhost:{{LOCAL_PORT}}</string>
+        <string>-o</string><string>ServerAliveInterval=30</string>
+        <string>-o</string><string>ServerAliveCountMax=3</string>
+        <string>-o</string><string>ExitOnForwardFailure=yes</string>
+        <string>-o</string><string>ConnectTimeout=15</string>
+        <string>-o</string><string>BatchMode=yes</string>
+        <string>-o</string><string>StrictHostKeyChecking=accept-new</string>
+        <string>-o</string><string>UserKnownHostsFile={{HOME}}/.ssh/known_hosts</string>
+        <string>-o</string><string>IdentityFile={{HOME}}/.ssh/id_rsa</string>
+        <string>-o</string><string>TCPKeepAlive=yes</string>
+        <string>{{TUNNEL_USER}}@{{RELAY_HOST}}</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>{{HOME}}</string>
+    </dict>
+
+    <key>UserName</key><string>{{TUNNEL_USER}}</string>
+    <key>GroupName</key><string>staff</string>
+    <key>WorkingDirectory</key><string>{{HOME}}</string>
+
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>ThrottleInterval</key><integer>15</integer>
+    <key>ProcessType</key><string>Background</string>
+
+    <key>StandardOutPath</key><string>/var/log/tether-client.out.log</string>
+    <key>StandardErrorPath</key><string>/var/log/tether-client.err.log</string>
+</dict>
+</plist>
