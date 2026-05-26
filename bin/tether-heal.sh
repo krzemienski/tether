@@ -138,14 +138,14 @@ check_tunnel() {
     log "tunnel: relay ${RELAY_HOST} unreachable over ssh — network/relay down, NOT kicking client"
     return 0
   fi
-  if relay_ssh "ss -tln | grep -q '127.0.0.1:${REMOTE_PORT} '" 2>/dev/null; then
-    log "tunnel: healthy (relay bound 127.0.0.1:${REMOTE_PORT})"
+  if relay_ssh "ss -tln | awk '{print \$4}' | grep -qE ':${REMOTE_PORT}\$'" 2>/dev/null; then
+    log "tunnel: healthy (relay bound on :${REMOTE_PORT})"
     return 0
   fi
   log "tunnel: relay up but :${REMOTE_PORT} not bound — kicking client"
   launchctl kickstart -k "system/${LAUNCHD_LABEL}" 2>>"$LOG_FILE" || true
   sleep 6
-  if relay_ssh "ss -tln | grep -q '127.0.0.1:${REMOTE_PORT} '" 2>/dev/null; then
+  if relay_ssh "ss -tln | awk '{print \$4}' | grep -qE ':${REMOTE_PORT}\$'" 2>/dev/null; then
     log "tunnel: recovered after kickstart"
   else
     log "tunnel: STILL DOWN after kickstart"

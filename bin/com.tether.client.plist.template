@@ -34,7 +34,7 @@
     <array>
         <string>/usr/bin/ssh</string>
         <string>-N</string>
-        <string>-R</string><string>127.0.0.1:{{REMOTE_PORT}}:localhost:{{LOCAL_PORT}}</string>
+        <string>-R</string><string>0.0.0.0:{{REMOTE_PORT}}:localhost:{{LOCAL_PORT}}</string>
         <string>-o</string><string>ServerAliveInterval=30</string>
         <string>-o</string><string>ServerAliveCountMax=3</string>
         <string>-o</string><string>ExitOnForwardFailure=yes</string>
