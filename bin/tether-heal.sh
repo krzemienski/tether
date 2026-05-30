@@ -130,25 +130,52 @@ check_launchd() {
 }
 
 # ---------- check 2: tunnel reachability ----------
-# Probe by sshing to the relay and asking whether ${REMOTE_PORT} is bound.
-# Tunnel data port is reachable over the WAN only when the home router has a
-# port-forward in place — see check_upnp() below, which re-asserts that lease.
+# Two-phase probe to defeat the stale-tunnel failure mode:
+#   (a) bind check    — is :${REMOTE_PORT} in LISTEN on the relay?
+#   (b) E2E check     — does ssh through that port actually reach m4?
+# A stale sshd-session can keep the port bound while the data channel is dead;
+# in that state the client's new connection gets "remote port forwarding
+# failed for listen port" and respawn-flaps forever. (b) catches it.
 check_tunnel() {
   if ! relay_ssh true 2>/dev/null; then
     log "tunnel: relay ${RELAY_HOST} unreachable over ssh — network/relay down, NOT kicking client"
     return 0
   fi
-  if relay_ssh "ss -tln | awk '{print \$4}' | grep -qE ':${REMOTE_PORT}\$'" 2>/dev/null; then
-    log "tunnel: healthy (relay bound on :${REMOTE_PORT})"
+
+  # (a) bind check
+  if ! relay_ssh "ss -tln | awk '{print \$4}' | grep -qE ':${REMOTE_PORT}\$'" 2>/dev/null; then
+    log "tunnel: relay up but :${REMOTE_PORT} not bound — kicking client"
+    launchctl kickstart -k "system/${LAUNCHD_LABEL}" 2>>"$LOG_FILE" || true
+    sleep 6
+    relay_ssh "ss -tln | awk '{print \$4}' | grep -qE ':${REMOTE_PORT}\$'" 2>/dev/null \
+      && log "tunnel: bind recovered after kickstart" \
+      || log "tunnel: bind STILL DOWN after kickstart"
     return 0
   fi
-  log "tunnel: relay up but :${REMOTE_PORT} not bound — kicking client"
+
+  # (b) E2E probe: ssh through the tunnel from the relay's loopback to m4.
+  # Uses BatchMode (no prompts) + short timeout. We do NOT trust ssh's known_hosts
+  # on the relay for 127.0.0.1:2222 since multiple respawns rotate host keys.
+  local probe_out
+  probe_out="$(relay_ssh "ssh -F /dev/null -o BatchMode=yes -o ConnectTimeout=${PROBE_TIMEOUT} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${REMOTE_PORT} ${TUNNEL_USER}@127.0.0.1 'echo TUNNEL_E2E_OK' 2>&1" 2>/dev/null)"
+  if printf '%s' "$probe_out" | grep -q TUNNEL_E2E_OK; then
+    log "tunnel: healthy (bind + E2E ok)"
+    return 0
+  fi
+
+  log "tunnel: STALE — port bound but E2E failed (${probe_out//$'\n'/ | }) — killing stale sshd-session + kicking client"
+  # Kill any nick-owned sshd-session children on the relay. Cannot touch the
+  # root-owned [priv] half over ssh, but killing the child closes the channel
+  # and root reaps the priv side automatically.
+  relay_ssh "pkill -u ${TUNNEL_USER} -f 'sshd-session: ${TUNNEL_USER}\$' 2>/dev/null; pkill -u ${TUNNEL_USER} -f 'sshd-session: ${TUNNEL_USER}@notty' 2>/dev/null; true" 2>/dev/null || true
+  sleep 2
   launchctl kickstart -k "system/${LAUNCHD_LABEL}" 2>>"$LOG_FILE" || true
   sleep 6
-  if relay_ssh "ss -tln | awk '{print \$4}' | grep -qE ':${REMOTE_PORT}\$'" 2>/dev/null; then
-    log "tunnel: recovered after kickstart"
+  probe_out="$(relay_ssh "ssh -F /dev/null -o BatchMode=yes -o ConnectTimeout=${PROBE_TIMEOUT} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${REMOTE_PORT} ${TUNNEL_USER}@127.0.0.1 'echo TUNNEL_E2E_OK' 2>&1" 2>/dev/null)"
+  if printf '%s' "$probe_out" | grep -q TUNNEL_E2E_OK; then
+    log "tunnel: E2E recovered after stale-kill + kickstart"
   else
-    log "tunnel: STILL DOWN after kickstart"
+    log "tunnel: E2E STILL DOWN after stale-kill + kickstart (${probe_out//$'\n'/ | })"
   fi
 }
 
